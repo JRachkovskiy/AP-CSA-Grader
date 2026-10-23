@@ -1,1 +1,323 @@
-index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AP CSA FRQ Auto-Grader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .mono { font-family: 'Courier New', Courier, monospace; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="bg-indigo-700 text-white shadow-lg py-5 px-6">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-graduation-cap text-3xl text-indigo-200"></i>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">AP CSA FRQ Auto-Grader</h1>
+          <p class="text-indigo-200 text-xs mt-0.5">Strict College Board Reader AI Engine</p>
+        </div>
+      </div>
+      
+      <!-- API Key Container -->
+      <div class="w-full md:w-auto flex items-center space-x-2 bg-indigo-800 p-2 rounded-lg border border-indigo-600">
+        <i class="fa-solid fa-key text-indigo-300 text-sm ml-1"></i>
+        <input type="password" id="apiKeyInput" placeholder="Enter Gemini API Key..." class="bg-indigo-900/60 text-white text-sm px-3 py-1.5 rounded border border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full md:w-64 placeholder-indigo-400">
+        <button onclick="saveApiKey()" class="bg-indigo-500 hover:bg-indigo-400 text-white text-xs px-3 py-2 rounded font-medium transition">Save</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto w-full p-4 md:p-6 flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: Settings & Input -->
+    <div class="lg:col-span-6 flex flex-col gap-6">
+
+      <!-- Assignment Selection -->
+      <div class="bg-white rounded-xl shadow-md p-5 border border-slate-200">
+        <label for="rubricSelect" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Select Assignment & Rubric</label>
+        <select id="rubricSelect" onchange="onRubricChange()" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold">
+          <option value="9point">Unit 1 Progress Check: FRQ Part C (9-Point Rubric)</option>
+          <option value="6point">Unit 1 Reassessment: Car & CarRunner (6-Point Rubric)</option>
+        </select>
+
+        <div id="rubricDescription" class="mt-4 p-3 bg-indigo-50 rounded-lg text-xs text-indigo-900 border border-indigo-100 leading-relaxed">
+          <!-- Dynamic Description inserted via JS -->
+        </div>
+      </div>
+
+      <!-- Student Code Input -->
+      <div class="bg-white rounded-xl shadow-md p-5 border border-slate-200 flex flex-col flex-grow">
+        <div class="flex justify-between items-center mb-2">
+          <label for="studentCode" class="block text-xs font-bold uppercase tracking-wider text-slate-500">Student Java Response</label>
+          <button onclick="clearInput()" class="text-xs text-slate-400 hover:text-red-500"><i class="fa-solid fa-trash-can mr-1"></i>Clear</button>
+        </div>
+        <textarea id="studentCode" placeholder="Paste student code submission here..." class="w-full flex-grow h-64 lg:h-96 p-4 mono text-sm bg-slate-900 text-emerald-400 rounded-lg border border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none shadow-inner leading-relaxed"></textarea>
+
+        <button id="gradeBtn" onclick="gradeStudentCode()" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-150 flex items-center justify-center space-x-2 text-base">
+          <i class="fa-solid fa-calculator"></i>
+          <span>Grade Response</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Results & Feedback -->
+    <div class="lg:col-span-6 flex flex-col">
+
+      <div id="resultsCard" class="bg-white rounded-xl shadow-md p-6 border border-slate-200 h-full flex flex-col">
+        
+        <!-- Default State -->
+        <div id="placeholderState" class="m-auto text-center py-12 px-4">
+          <div class="w-16 h-16 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+            <i class="fa-solid fa-clipboard-check"></i>
+          </div>
+          <h3 class="text-lg font-bold text-slate-700 mb-1">Ready to Grade</h3>
+          <p class="text-slate-400 text-sm max-w-sm mx-auto">Select a prompt, paste the student's Java code, and click "Grade Response" to generate feedback.</p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="hidden m-auto text-center py-12 px-4">
+          <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent mb-4"></div>
+          <h3 class="text-lg font-bold text-slate-700">Evaluating Java Code...</h3>
+          <p class="text-slate-400 text-xs mt-1">Applying College Board AP Reader scoring criteria</p>
+        </div>
+
+        <!-- Feedback Results State -->
+        <div id="feedbackContent" class="hidden flex-col h-full">
+          
+          <!-- Score Banner -->
+          <div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Total Score</span>
+              <div id="scoreDisplay" class="text-3xl font-extrabold text-slate-800">0 / 0</div>
+            </div>
+            <div id="scoreBadge" class="px-4 py-2 rounded-full text-sm font-extrabold shadow-sm">
+              <!-- Score Badge text -->
+            </div>
+          </div>
+
+          <!-- Summary Overview -->
+          <div id="summaryBox" class="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs text-slate-700 mb-4 leading-relaxed italic">
+            <!-- Dynamic summary text -->
+          </div>
+
+          <!-- Rubric Breakdown List -->
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Itemized Rubric Checklist</h4>
+          <div id="rubricItemsList" class="space-y-3 overflow-y-auto max-h-[500px] pr-1 flex-grow">
+            <!-- Dynamic rubric point rows inserted here -->
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // Prompt Specifications Data
+    const PROMPTS = {      "9point": {
+        maxScore: 9,
+        description: "<strong>Unit 1 Progress Check: FRQ Part C</strong><br>Processes an email address (<code>firstName.lastName@domain</code>) to generate 3 usernames using <code>indexOf</code>, <code>substring</code>, and <code>Math.random</code>.",
+        rubric: [
+          { id: 1, title: "Part A Point 1: Finds '.' and '@' indices using indexOf()", details: "Uses String method indexOf to locate '.' and '@' in email." },
+          { id: 2, title: "Part B Point 1: Extracts first and last names", details: "Uses substring on email to extract first name and last name." },
+          { id: 3, title: "Part B Point 2: Creates user1 (firstName + '_' + lastName)", details: "Creates String variable containing first name and last name." },
+          { id: 4, title: "Part C Point 1: Extracts first initial", details: "Uses substring to extract the first letter of first name." },
+          { id: 5, title: "Part C Point 2: Creates user2 (firstInit + '_' + lastName)", details: "Creates String variable containing first initial and last name." },
+          { id: 6, title: "Part D Point 1: Generates random int [0, lenFirst)", details: "Uses Math.random() to generate random index between 0 and length of first name." },
+          { id: 7, title: "Part D Point 2: Generates random int [0, lenLast - 2)", details: "Uses Math.random() to generate random index between 0 and length of last name minus 2." },
+          { id: 8, title: "Part E Point 1: Extracts random char & sequence of 3 chars", details: "Uses substring to extract 1 char from first name and 3 chars from last name." },
+          { id: 9, title: "Part E Point 2: Creates user3 string", details: "Creates String variable containing identified first char and 3 last chars." }
+        ]
+      },
+      "6point": {
+        maxScore: 6,
+        description: "<strong>Unit 1 Reassessment: Question 2</strong><br>Completes <code>addGas()</code> in the <code>Car</code> class and creates/manipulates <code>Car</code> objects inside <code>CarRunner</code> main method.",
+        rubric: [
+          { id: 1, title: "Point 1: gasLevel correctly updated", details: "Inside addGas(), updates instance variable gasLevel by adding amount." },
+          { id: 2, title: "Point 2: Two Car objects created", details: "Instantiates two distinct Car objects with custom arguments." },
+          { id: 3, title: "Point 3: Initial information printed", details: "Prints initial state of both cars (e.g., using System.out.println(carObj))." },
+          { id: 4, title: "Point 4: addGas() called on first car", details: "Calls addGas(12.5) on the first car object." },
+          { id: 5, title: "Point 5: changeColor() called on second car", details: "Calls changeColor(\"Silver\") on the second car object." },
+          { id: 6, title: "Point 6: Final information printed", details: "Prints final state of both cars after modifications." }
+        ]
+      }
+    };
+
+    // Load API Key from localStorage
+    window.onload = () => {
+      const savedKey = localStorage.getItem('ap_csa_gemini_key');
+      if (savedKey) {
+        document.getElementById('apiKeyInput').value = savedKey;
+      }
+      onRubricChange();
+    };
+
+    function saveApiKey() {
+      const key = document.getElementById('apiKeyInput').value.trim();
+      if (key) {
+        localStorage.setItem('ap_csa_gemini_key', key);
+        alert('API Key saved successfully!');
+      } else {
+        localStorage.removeItem('ap_csa_gemini_key');
+        alert('API Key cleared.');
+      }
+    }
+
+    function onRubricChange() {
+      const rubricKey = document.getElementById('rubricSelect').value;
+      const descBox = document.getElementById('rubricDescription');
+      descBox.innerHTML = PROMPTS[rubricKey].description;
+    }
+
+    function clearInput() {
+      document.getElementById('studentCode').value = '';
+    }
+
+    async function gradeStudentCode() {
+      const apiKey = document.getElementById('apiKeyInput').value.trim() || localStorage.getItem('ap_csa_gemini_key');
+      if (!apiKey) {
+        alert('Please enter and save your Gemini API Key in the top right corner.');
+        return;
+      }
+
+      const code = document.getElementById('studentCode').value.trim();
+      if (!code) {
+        alert('Please paste student code before grading.');
+        return;
+      }
+
+      const rubricType = document.getElementById('rubricSelect').value;
+      const currentPromptData = PROMPTS[rubricType];
+
+      // UI States
+      document.getElementById('placeholderState').classList.add('hidden');
+      document.getElementById('feedbackContent').classList.add('hidden');
+      document.getElementById('loadingState').classList.remove('hidden');
+
+      const systemPrompt = `You are an official College Board AP Computer Science A Reader grading student free-response code.
+Apply extreme AP CSA grading standards:
+1. Java Syntax & Compilation Rules: Code wrapped inside string literal quotes (e.g., "firstName + '_' + lastName") IS A STRING LITERAL, NOT CODE. It does NOT call variables or methods and must be treated as a syntax/logic failure.
+2. Method Call Requirements: If a rubric point specifies calling a method like indexOf(), substring(), or Math.random(), the exact method call must exist in executable code. Unexecuted or quoted method names do NOT earn points.
+3. No Leniency: Do not award benefit of the doubt for broken string concatenations or non-functional syntax.
+
+Rubric Details to Evaluate:
+${JSON.stringify(currentPromptData.rubric, null, 2)}
+
+Return ONLY a JSON object matching this schema:
+{
+  "totalScore": number,
+  "maxScore": ${currentPromptData.maxScore},
+  "summary": "Short 1-2 sentence overall verdict.",
+  "points": [
+    {
+      "id": number,
+      "title": "Rubric point title",
+      "earned": boolean,
+      "explanation": "Specific reason why point was awarded or lost, referencing actual code lines or errors."
+    }
+  ]
+}`;
+
+      const userContent = `STUDENT CODE SUBMISSION:\n\`\`\`java\n${code}\n\`\`\``;
+
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ text: systemPrompt + "\n\n" + userContent }] }
+            ],
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error?.message || `HTTP error ${response.status}`);
+        }
+
+        const data = await response.json();
+        const jsonText = data.candidates[0].content.parts[0].text;
+        const evaluation = JSON.parse(jsonText);
+
+        renderResults(evaluation);
+
+      } catch (err) {
+        alert('Grading Error: ' + err.message);
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('placeholderState').classList.remove('hidden');
+      }
+    }
+
+    function renderResults(evalData) {
+      document.getElementById('loadingState').classList.add('hidden');
+      document.getElementById('feedbackContent').classList.remove('hidden');
+      document.getElementById('feedbackContent').classList.add('flex');
+
+      // Score Display
+      const scoreDisplay = document.getElementById('scoreDisplay');
+      scoreDisplay.innerText = `${evalData.totalScore} / ${evalData.maxScore}`;
+
+      const badge = document.getElementById('scoreBadge');
+      const percentage = (evalData.totalScore / evalData.maxScore) * 100;
+
+      if (percentage === 100) {
+        badge.className = "px-4 py-2 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300";
+        badge.innerText = "PERFECT SCORE";
+      } else if (percentage >= 60) {
+        badge.className = "px-4 py-2 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-300";
+        badge.innerText = "PASSING CREDIT";
+      } else {
+        badge.className = "px-4 py-2 rounded-full text-xs font-extrabold bg-rose-100 text-rose-800 border border-rose-300";
+        badge.innerText = "NEEDS REVISION";
+      }
+
+      // Summary
+      document.getElementById('summaryBox').innerText = evalData.summary;
+
+      // Rubric List
+      const listContainer = document.getElementById('rubricItemsList');
+      listContainer.innerHTML = '';
+
+      evalData.points.forEach(pt => {
+        const item = document.createElement('div');
+        item.className = `p-3 rounded-lg border ${pt.earned ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'} text-xs flex flex-col gap-1`;
+
+        const header = document.createElement('div');
+        header.className = "flex items-center justify-between font-bold";
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = pt.earned ? 'text-emerald-900' : 'text-rose-900';
+        titleSpan.innerText = pt.title;
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-extrabold ${pt.earned ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`;
+        statusBadge.innerText = pt.earned ? '+1 Earned' : '0 Missed';
+
+        header.appendChild(titleSpan);
+        header.appendChild(statusBadge);
+
+        const expDiv = document.createElement('div');
+        expDiv.className = `mt-1 leading-relaxed ${pt.earned ? 'text-emerald-800' : 'text-rose-800'}`;
+        expDiv.innerText = pt.explanation;
+
+        item.appendChild(header);
+        item.appendChild(expDiv);
+        listContainer.appendChild(item);
+      });
+    }
+  </script>
+</body>
+</html>
